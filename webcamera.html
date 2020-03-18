@@ -1,0 +1,246 @@
+<script type="text/x-red" data-template-name="webcamera">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Webcamera">
+    </div>
+    <div class="form-row">
+        <label for="node-input-topic"><i class="fa fa-tag"></i> Topic</label>
+        <input type="text" id="node-input-topic" placeholder="Topic">
+    </div>
+    <div class="form-row">
+        <label for="node-input-webcamera"><i class="fa fa-camera"></i> Device</label>
+        <select id="node-input-webcamera" style="width:100%; margin-right:5px;">
+            <option placeholder=""></option>
+        </select>
+    </div>
+
+
+
+</script>
+
+<script type="text/x-red" data-help-name="webcamera">
+    <p>A simple camera node to capture the current image from the device webcam</p>
+    <p>Usage:</p>
+    <ol>
+        <li>Add the camera node to your flow</li>
+        <li>Click the <code>button</code> capture an image from the webcam</li>
+    </ol>
+    <p>The <code>png</code> image is sent as the <code>msg.payload</code> object</p>
+    <p>If a topic is added it will be set as <code>msg.topic</code>.</p>
+
+
+
+</script>
+
+
+<script type="text/javascript">
+    (function () {
+        const DEFAULT_WIDTH = 160;
+        const DEFAULT_HEIGHT = 90;
+        console.log("WebCam 0.0.1")
+        navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+        window.URL = window.URL || window.webkitURL || window.mozURL || window.msURL;
+
+        RED.nodes.registerType('webcamera', {
+                category: 'input',
+                defaults: {
+                    name: {value: ''},
+                    // width: {
+                    //     value: DEFAULT_WIDTH,
+                    //     required: true,
+                    //     validate: function (v) {
+                    //         return !v || !isNaN(parseInt(v, 10));
+                    //     }
+                    // },
+                    // height: {
+                    //     value: DEFAULT_HEIGHT,
+                    //     required: true,
+                    //     validate: function (v) {
+                    //         return !v || !isNaN(parseInt(v, 10));
+                    //     }
+                    // },
+                    webcamera: {value: ''},
+                    topic: {value: ''}
+                },
+                color: 'rgb(215, 201, 194)',
+                inputs: 0,
+                outputs: 1,
+                icon: 'camera.png',
+                paletteLabel: 'webcamera',
+                label: function () {
+                    let node = this;
+                    if (node.webcamera) {
+                        navigator.mediaDevices.enumerateDevices().then(function (mediaDevices) {
+                            const webcamDevice = mediaDevices.find(mediaDevice => (mediaDevice.kind === 'videoinput') && (mediaDevice.deviceId == node.webcamera));
+                            if (webcamDevice) {
+                                node.webcamera = webcamDevice.deviceId;
+                                redraw(node);
+                            }
+                        });
+                    }
+                    return this.name || 'webcamera';
+                },
+                labelStyle: function () {
+                    return this.name ? 'node_label_italic' : '';
+                },
+                button: {
+                    onclick: function () {
+                        takeSnapshot(this.id, this.webcamera, this.topic);
+                    }
+                },
+                oneditprepare: function () {
+                    let selected_device = this.webcamera;
+                    navigator.mediaDevices.enumerateDevices().then(function (mediaDevices) {
+                        const webcamera_select = document.getElementById('node-input-webcamera');
+
+                        webcamera_select.innerHTML = '';
+                        webcamera_select.appendChild(document.createElement('option'));
+                        let count = 1;
+                        mediaDevices.forEach(mediaDevice => {
+                            if (mediaDevice.kind === 'videoinput') {
+                                const option = document.createElement('option');
+                                option.value = mediaDevice.deviceId;
+                                option.selected = selected_device == mediaDevice.deviceId;
+                                const label = mediaDevice.label || `Camera ${count++}`;
+                                const textNode = document.createTextNode(label);
+                                option.appendChild(textNode);
+                                webcamera_select.appendChild(option);
+                            }
+                        });
+                    });
+                },
+                oneditsave: function () {
+                    let $dropdown = $("#node-input-webcamera");
+                    let choice = $dropdown.val();
+                    this.webcamera = choice;
+                    redraw(this);
+                },
+                onadd: function () {
+                    let node = this;
+                    if (!node.webcamera || node.webcamera === '') {
+                        navigator.mediaDevices.enumerateDevices().then(function (mediaDevices) {
+                            webcamDevices = mediaDevices.filter(mediaDevice => mediaDevice.kind === 'videoinput');
+                            if (webcamDevices.length > 0) {
+                                node.webcamera = webcamDevices[0].deviceId;
+                                redraw(node);
+                            }
+                        });
+                    }
+                }
+            }
+        );
+
+        function takeSnapshot(id, device, topic) {
+            if (!device || device === '') {
+                console.log("No camera device selected!");
+            } else {
+                let video = document.getElementById("webcam-output-video-" + id);
+
+                if (video) {
+                    const width = 1280;
+                    const height = 720;
+
+                    let canvas = document.createElement('canvas');
+                    canvas.setAttribute('width', width);
+                    canvas.setAttribute('height', height);
+
+                    var ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0, width, height);
+
+                    canvas.toBlob(function (blob) {
+                        uploadRecord(id, topic, blob)
+                    });
+
+                    canvas.remove()
+                }
+            }
+        }
+
+        function uploadRecord(id, topic, blob) {
+            let topicParam = ((!topic || topic === '') ? '' : '?topic=' + topic);
+            var xhr = new XMLHttpRequest()
+            xhr.open('POST', 'node-red-contrib-webcamera/' + id + topicParam, true)
+            xhr.send(blob)
+        }
+
+        function redraw(node) {
+            const id = node.id;
+            const $bubble = document.getElementById("webcam-output-bubble-" + id);
+            const $fo = document.getElementById("webcam-output-fo-" + id);
+
+            $bubble && $bubble.remove();
+            $fo && $fo.remove();
+
+            render(id, node);
+        }
+
+        function render(id, node) {
+            if (node.webcamera === '') {
+                console.log("No camera device selected!")
+            } else {
+                let videoConstraints = {
+                    deviceId: {exact: node.webcamera},
+                    width: {ideal: 1280},
+                    height: {ideal: 720}
+                };
+
+                let $fo = document.getElementById("webcam-output-" + id)
+                if (!$fo) {
+                    const $container = document.getElementById(id)
+                    if (!$container) {
+                        return
+                    }
+
+                    const bubble = document.createElementNS("http://www.w3.org/2000/svg", 'polyline');
+                    bubble.setAttribute('id', "webcam-output-bubble-" + id);
+                    bubble.setAttribute('style', 'fill:#A7BBCE');
+                    bubble.setAttribute('stroke', '#999999');
+                    const left = 0;
+                    const top = 36;
+                    const right = left + DEFAULT_WIDTH;
+                    const bottom = top + DEFAULT_HEIGHT;
+                    const points =
+                        (left + 10) + "," + (top - 5) + " " +
+                        (left + 10) + "," + top + " " +
+                        right + "," + top + " " +
+                        right + "," + bottom + " " +
+                        left + "," + bottom + " " +
+                        left + "," + top + " " +
+                        (left + 5) + "," + top + " " +
+                        (left + 5) + "," + (top - 5)
+                    bubble.setAttribute('points', points)
+                    $container.insertBefore(bubble, $container.lastChild.nextSibling);
+
+                    $fo = document.createElementNS("http://www.w3.org/2000/svg", 'foreignObject');
+                    $fo.setAttribute('id', "webcam-output-fo-" + id);
+                    $fo.setAttribute('x', '0');
+                    $fo.setAttribute('y', '36');
+                    $fo.setAttribute('width', node.width || DEFAULT_WIDTH);
+                    $fo.setAttribute('height', node.height || DEFAULT_HEIGHT);
+                    $container.insertBefore($fo, $container.lastChild.nextSibling);
+
+                    const video = $fo.appendChild(document.createElement('video'));
+                    video.setAttribute('id', "webcam-output-video-" + id);
+                    video.setAttribute('x', '0');
+                    video.setAttribute('y', '0');
+                    video.setAttribute('width', node.width || DEFAULT_WIDTH);
+                    video.setAttribute('height', node.height || DEFAULT_HEIGHT);
+                    video.autoplay = true;
+
+                    const constraints = {
+                        video: videoConstraints,
+                        audio: false
+                    };
+                    navigator.mediaDevices
+                        .getUserMedia(constraints)
+                        .then(stream => {
+                            video.srcObject = stream;
+                        })
+                        .catch(error => {
+                            console.error(error);
+                        });
+                }
+            }
+        }
+    })();
+</script>

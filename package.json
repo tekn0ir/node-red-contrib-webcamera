@@ -1,0 +1,29 @@
+{
+    "name": "node-red-contrib-webcamera",
+    "version": "0.0.1",
+    "description": "Webcam Node for Node Red.",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/tekn0ir/node-red-contrib-webcamera.git"
+    },
+    "keywords": [
+        "webcamera",
+        "node-red",
+        "node"
+    ],
+    "node-red": {
+        "nodes": {
+            "cam": "webcamera.js"
+        }
+    },
+    "author": {
+        "name": "Anders Åslund"
+    },
+    "dependencies": {
+        "body-parser": "^1.19.0"
+    }
+}
